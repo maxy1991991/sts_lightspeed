@@ -992,6 +992,11 @@ PYBIND11_MODULE(slaythespire, m) {
         "the pending CARD_SELECT task (valid only when input_state == CARD_SELECT), so the bridge "
         "can confirm a pbc opened the same select the live game did before advancing through it");
 
+    battleContext.def_property_readonly("card_select_selected_bits",
+        [](const BattleContext &bc) { return bc.cardSelectInfo.selectedBits; },
+        "for the sequential multi-select tasks (EXHAUST_MANY, GAMBLE), the cards picked so far as a "
+        "bitmask over hand indices; the value to pass to a MULTI_CARD_SELECT action to confirm the set");
+
     // Player bindings
     pybind11::class_<Player> player(m, "Player");
     player.def_readwrite("energy", &Player::energy)
