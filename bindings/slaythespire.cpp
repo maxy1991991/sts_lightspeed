@@ -832,6 +832,10 @@ PYBIND11_MODULE(slaythespire, m) {
         .def_readonly("smoke_bomb_used", &BattleContext::smokeBombUsed)
         .def_readonly("empty_deck_shuffle_count", &BattleContext::emptyDeckShuffleCount)
         .def_readwrite("potionCount", &BattleContext::potionCount)
+        .def_readwrite("potion_capacity", &BattleContext::potionCapacity)
+        .def_property_readonly("potions", [](const BattleContext &bc) {
+            return std::vector<Potion>(bc.potions.begin(), bc.potions.begin() + bc.potionCapacity);
+        }, "the potion belt: one Potion per slot up to potion_capacity, EMPTY_POTION_SLOT for an empty slot")
         .def_readwrite("intents_hidden", &BattleContext::intentsHidden)
         .def_property_readonly("player", [](BattleContext &bc) -> Player& {
             return bc.player; 
