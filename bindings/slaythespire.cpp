@@ -524,11 +524,20 @@ PYBIND11_MODULE(slaythespire, m) {
         .def_readwrite("speedrun_pace", &GameContext::speedrunPace)
         .def_readwrite("note_for_yourself_card", &GameContext::noteForYourselfCard)
         .def_readwrite("potion_capacity", &GameContext::potionCapacity)
-        .def("create_battle_context", [](GameContext &gc) -> BattleContext* {
+        .def("create_battle_context", [](GameContext &gc,
+                                         std::optional<MonsterEncounter> encounter) -> BattleContext* {
             BattleContext *bc = new BattleContext();
-            bc->init(gc);
+            // None = use the encounter the game rolled (gc.info.encounter); otherwise
+            // force the given encounter against this state (mirrors playout_battle).
+            if (encounter.has_value() && *encounter != MonsterEncounter::INVALID) {
+                bc->init(gc, *encounter);
+            } else {
+                bc->init(gc);
+            }
             return bc;
-        }, pybind11::return_value_policy::take_ownership, "create a new BattleContext initialized from this GameContext")
+        }, "encounter"_a = pybind11::none(),
+           pybind11::return_value_policy::take_ownership,
+           "create a new BattleContext initialized from this GameContext; optionally force a specific encounter")
         .def("empty_battle_context", [](GameContext &gc) -> BattleContext* {
             BattleContext *bc = new BattleContext();
             bc->init_empty(gc);
@@ -832,6 +841,10 @@ PYBIND11_MODULE(slaythespire, m) {
         .def_readonly("smoke_bomb_used", &BattleContext::smokeBombUsed)
         .def_readonly("empty_deck_shuffle_count", &BattleContext::emptyDeckShuffleCount)
         .def_readwrite("potionCount", &BattleContext::potionCount)
+        .def_readwrite("potion_capacity", &BattleContext::potionCapacity)
+        .def_property_readonly("potions", [](const BattleContext &bc) {
+            return std::vector<Potion>(bc.potions.begin(), bc.potions.begin() + bc.potionCapacity);
+        }, "the potion belt: one Potion per slot up to potion_capacity, EMPTY_POTION_SLOT for an empty slot")
         .def_readwrite("intents_hidden", &BattleContext::intentsHidden)
         .def_property_readonly("player", [](BattleContext &bc) -> Player& {
             return bc.player; 
@@ -987,6 +1000,11 @@ PYBIND11_MODULE(slaythespire, m) {
         [](const BattleContext &bc) { return bc.cardSelectInfo.cardSelectTask; },
         "the pending CARD_SELECT task (valid only when input_state == CARD_SELECT), so the bridge "
         "can confirm a pbc opened the same select the live game did before advancing through it");
+
+    battleContext.def_property_readonly("card_select_selected_bits",
+        [](const BattleContext &bc) { return bc.cardSelectInfo.selectedBits; },
+        "for the sequential multi-select tasks (EXHAUST_MANY, GAMBLE), the cards picked so far as a "
+        "bitmask over hand indices; the value to pass to a MULTI_CARD_SELECT action to confirm the set");
 
     // Player bindings
     pybind11::class_<Player> player(m, "Player");

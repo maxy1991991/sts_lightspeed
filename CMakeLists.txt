@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.19)
-# Set the SDK path before the project command
-set(CMAKE_OSX_SYSROOT "/Library/Developer/CommandLineTools/SDKs/MacOSX15.2.sdk")
+# Pin a specific macOS SDK only when that exact SDK is installed; otherwise let
+# CMake auto-detect the active SDK. The upstream project hardcoded an absolute
+# SDK path, which fails to configure on any machine without that exact version.
+if(APPLE AND NOT DEFINED CMAKE_OSX_SYSROOT)
+    set(_pinned_sdk "/Library/Developer/CommandLineTools/SDKs/MacOSX15.2.sdk")
+    if(EXISTS "${_pinned_sdk}")
+        set(CMAKE_OSX_SYSROOT "${_pinned_sdk}")
+    endif()
+    unset(_pinned_sdk)
+endif()
 
 project(
         sts_lightspeed
