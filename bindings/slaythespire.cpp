@@ -524,11 +524,20 @@ PYBIND11_MODULE(slaythespire, m) {
         .def_readwrite("speedrun_pace", &GameContext::speedrunPace)
         .def_readwrite("note_for_yourself_card", &GameContext::noteForYourselfCard)
         .def_readwrite("potion_capacity", &GameContext::potionCapacity)
-        .def("create_battle_context", [](GameContext &gc) -> BattleContext* {
+        .def("create_battle_context", [](GameContext &gc,
+                                         std::optional<MonsterEncounter> encounter) -> BattleContext* {
             BattleContext *bc = new BattleContext();
-            bc->init(gc);
+            // None = use the encounter the game rolled (gc.info.encounter); otherwise
+            // force the given encounter against this state (mirrors playout_battle).
+            if (encounter.has_value() && *encounter != MonsterEncounter::INVALID) {
+                bc->init(gc, *encounter);
+            } else {
+                bc->init(gc);
+            }
             return bc;
-        }, pybind11::return_value_policy::take_ownership, "create a new BattleContext initialized from this GameContext")
+        }, "encounter"_a = pybind11::none(),
+           pybind11::return_value_policy::take_ownership,
+           "create a new BattleContext initialized from this GameContext; optionally force a specific encounter")
         .def("empty_battle_context", [](GameContext &gc) -> BattleContext* {
             BattleContext *bc = new BattleContext();
             bc->init_empty(gc);
