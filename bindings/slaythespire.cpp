@@ -1006,6 +1006,91 @@ PYBIND11_MODULE(slaythespire, m) {
         "for the sequential multi-select tasks (EXHAUST_MANY, GAMBLE), the cards picked so far as a "
         "bitmask over hand indices; the value to pass to a MULTI_CARD_SELECT action to confirm the set");
 
+    battleContext.def("card_select_candidate_ids", [](const BattleContext &bc) {
+        // (pick_index, card_id) for each legal SINGLE_CARD_SELECT in the active combat
+        // card-select. pick_index is the absolute pile index SINGLE_CARD_SELECT consumes,
+        // so it aligns 1:1 with the CARD_SELECT action block on the Python side. The valid
+        // index set comes from enumerateCardSelectActions; is_valid_action / build_mask accept
+        // the same picks via the parallel isValidSingleCardSelectAction switch (the two agree
+        // for every Ironclad task; the agent-side alignment test locks that). This only maps
+        // the task to the pile the id is read from.
+        std::vector<std::pair<int, int>> out;
+        // Only meaningful while a select is open. Gate on inputState (as build_mask does for
+        // the CARD_SELECT bits) so a cardSelectTask left set after a select resolves cannot
+        // repopulate the field during normal play, and so enumerateCardSelectActions is never
+        // called with the INVALID task it would assert on.
+        if (bc.inputState != InputState::CARD_SELECT) {
+            return out;
+        }
+        // The Src switch maps the task to its pile; tasks enumerateCardSelectActions does not
+        // handle (the non-Ironclad selects) map to NONE and return before enumerating.
+        enum class Src { NONE, HAND, EXHAUST, DISCARD, DRAW, GENERATED };
+        Src src = Src::NONE;
+        switch (bc.cardSelectInfo.cardSelectTask) {
+            case CardSelectTask::ARMAMENTS:
+            case CardSelectTask::DUAL_WIELD:
+            case CardSelectTask::EXHAUST_ONE:
+            case CardSelectTask::EXHAUST_MANY:
+            case CardSelectTask::FORETHOUGHT:
+            case CardSelectTask::GAMBLE:
+            case CardSelectTask::WARCRY:
+                src = Src::HAND;
+                break;
+            case CardSelectTask::EXHUME:
+                src = Src::EXHAUST;
+                break;
+            case CardSelectTask::HEADBUTT:
+            case CardSelectTask::LIQUID_MEMORIES_POTION:
+                src = Src::DISCARD;
+                break;
+            case CardSelectTask::SECRET_TECHNIQUE:
+            case CardSelectTask::SECRET_WEAPON:
+                src = Src::DRAW;
+                break;
+            case CardSelectTask::DISCOVERY:
+            case CardSelectTask::CODEX:
+                src = Src::GENERATED;
+                break;
+            default:
+                return out;  // INVALID / unhandled task: do not enumerate (avoids the assert)
+        }
+        for (const auto &a : search::Action::enumerateCardSelectActions(bc)) {
+            if (a.getActionType() != search::ActionType::SINGLE_CARD_SELECT) {
+                continue;  // the EXHAUST_MANY/GAMBLE confirm is MULTI_CARD_SELECT (see selected_bits)
+            }
+            const int idx = a.getSelectIdx();
+            int id = -1;
+            switch (src) {
+                case Src::HAND:
+                    id = static_cast<int>(bc.cards.hand[idx].getId());
+                    break;
+                case Src::EXHAUST:
+                    id = static_cast<int>(bc.cards.exhaustPile[idx].getId());
+                    break;
+                case Src::DISCARD:
+                    id = static_cast<int>(bc.cards.discardPile[idx].getId());
+                    break;
+                case Src::DRAW:
+                    id = static_cast<int>(bc.cards.drawPile[idx].getId());
+                    break;
+                case Src::GENERATED:
+                    // Generated candidates live in cardSelectInfo.cards[0..2]; CODEX's idx 3
+                    // is "skip" (no card) and is left out (PAD on the Python side).
+                    if (idx >= 0 && idx < static_cast<int>(bc.cardSelectInfo.cards.size())) {
+                        id = static_cast<int>(bc.cardSelectInfo.cards[idx]);
+                    }
+                    break;
+                case Src::NONE:
+                    break;
+            }
+            if (id >= 0) {
+                out.emplace_back(idx, id);
+            }
+        }
+        return out;
+    }, "candidate (pick_index, card_id) pairs for the active combat card-select; pick_index "
+       "aligns with SINGLE_CARD_SELECT and the CARD_SELECT action block. Empty when inactive");
+
     // Player bindings
     pybind11::class_<Player> player(m, "Player");
     player.def_readwrite("energy", &Player::energy)
